@@ -144,7 +144,7 @@ class BLESimpleCentral:
                         self._ble.gap_scan(None)
                         ######### 重要##########
                         print("rssi",rssi,"uuid",self._name)
-                        self.lighting(rssi)
+
                         ######### 重要##########
 
         if event == _IRQ_CENTRAL_CONNECT:
@@ -164,41 +164,7 @@ class BLESimpleCentral:
                 self._write_callback(value)
 
 
-    def lighting(self,rssi):
-        n = np.n
-        r = 0
-        g = 0
-        b = 0
-        # フェードイン/フェードアウト
-        for i in range(0, 4 * 256,  2): # 一番右の数字で点滅の周期を制御できる
-            
-            
-            for j in range(n):
-                if (i // 256) % 2 == 0:
-                    val = i & 0xff
-                    if rssi > -45:
-                        np[j] = (val, 0, 0)
-                    elif rssi > -65 and rssi < -45:
-                        np[j] = (0, val, 0)
-                    elif rssi > -100 and rssi < -65:
-                        np[j] = (0, 0, val)
-                else:
-                    val = 255 - (i & 0xff)
-                    if rssi > -45:
-                        np[j] = (val, 0, 0)
-                    elif rssi > -65 and rssi < -45:
-                        np[j] = (0, val, 0)
-                    elif rssi > -100 and rssi < -65:
-                        np[j] = (0, 0, val)
-                        
-                
-            np.write()
-            
 
-        # 消灯
-        for i in range(n):
-            np[i] = (0, 0, 0)
-        np.write()
 #         def add(a,b):
 #             return a+b
 #         
@@ -297,7 +263,7 @@ class BLESimpleCentral:
     def on_write(self, callback):
         self._write_callback = callback
 #######################
-
+rssi = -90 #デフォルトのrssi値
 
 def demo():
     def on_scan(addr_type, addr, name,rssi):
@@ -310,6 +276,45 @@ def demo():
     def on_rx(v):
         print("RX", v)
 
+    def lighting(self):
+        n = np.n
+        r = 0
+        g = 0
+        b = 0
+        # フェードイン/フェードアウト
+        for i in range(0, 4 * 256,  2): # 一番右の数字で点滅の周期を制御できる
+            
+            
+            for j in range(n):
+                if (i // 256) % 2 == 0:
+                    val = i & 0xff
+                    if rssi > -45:
+                        np[j] = (val, 0, 0)
+                    elif rssi > -65 and rssi < -45:
+                        np[j] = (0, val, 0)
+                    elif rssi > -100 and rssi < -65:
+                        np[j] = (0, 0, val)
+                else:
+                    val = 255 - (i & 0xff)
+                    if rssi > -45:
+                        np[j] = (val, 0, 0)
+                    elif rssi > -65 and rssi < -45:
+                        np[j] = (0, val, 0)
+                    elif rssi > -100 and rssi < -65:
+                        np[j] = (0, 0, val)
+                        
+                
+            np.write()
+            
+        # 消灯
+        for i in range(n):
+            np[i] = (0, 0, 0)
+        np.write()
+        
+        
+        
+        
+
     ble = bluetooth.BLE()
     central = BLESimpleCentral(ble)
     
@@ -321,7 +326,7 @@ def demo():
         time.sleep_ms(1000)
 
         with_response = False
-        
+        lighting(rssi) 
         ble.gap_scan(None)
         print("/---Disconnected---/")
 
