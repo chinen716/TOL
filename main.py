@@ -132,7 +132,7 @@ class BLESimpleCentral:
             if adv_type in (_ADV_IND, _ADV_DIRECT_IND):
                 type_list = decode_services(adv_data)
                 for sensed_uuid in _ENV_SENSE_UUID:
-                    if sensed_uuid in type_list:
+                    if sensed_uuid in type_list: # 登録されたデバイスのuuidと一致しているか判定
                         
                         # Found a potential device, remember it and stop scanning.
                         self._addr_type = addr_type
@@ -142,10 +142,10 @@ class BLESimpleCentral:
                         self._rssi = rssi
                         self._name = decode_name(adv_data) or "?"
                         self._ble.gap_scan(None)
-
+                        ######### 重要##########
                         print("rssi",rssi,"uuid",self._name)
-                        rssi2 = int(rssi*rssi*rssi*rssi*rssi/10000000000*255)
-                        colList = self.lighting(rssi)
+                        self.lighting(rssi)
+                        ######### 重要##########
 
         if event == _IRQ_CENTRAL_CONNECT:
             conn_handle, _, _ = data
@@ -165,38 +165,73 @@ class BLESimpleCentral:
 
 
     def lighting(self,rssi):
-        def add(a,b):
-            return a+b
-        
-        _colList = np[5]
-        r = _colList[0]
-        g = _colList[1]
-        b = _colList[2]
-        y = 0
-        _step = 2
-        if rssi > -60:
-            r1 = 255
-            g1 = 0
-            b1 = 0
-            y1 = 0
-        else:
-            r1 = 0
-            g1 = 0
-            b1 = 255
-            y1 = 0
+        n = np.n
+        r = 0
+        g = 0
+        b = 0
+        # フェードイン/フェードアウト
+        for i in range(0, 4 * 256,  2): # 一番右の数字で点滅の周期を制御できる
+            
+            
+            for j in range(n):
+                if (i // 256) % 2 == 0:
+                    val = i & 0xff
+                    if rssi > -45:
+                        np[j] = (val, 0, 0)
+                    elif rssi > -65 and rssi < -45:
+                        np[j] = (0, val, 0)
+                    elif rssi > -100 and rssi < -65:
+                        np[j] = (0, 0, val)
+                else:
+                    val = 255 - (i & 0xff)
+                    if rssi > -45:
+                        np[j] = (val, 0, 0)
+                    elif rssi > -65 and rssi < -45:
+                        np[j] = (0, val, 0)
+                    elif rssi > -100 and rssi < -65:
+                        np[j] = (0, 0, val)
+                        
+                
+            np.write()
+            
 
-        _baseColDif = [(r1+(-r))/_step,(g1+(-g))/_step,(b1+(-b))/_step,(y1+(-y))/_step]
-        #print(_baseColDif)
-        for j in range(_step-1):
-            _colDif = [int(_baseColDif[0])*(j+1)+r,int(_baseColDif[1]*(j+1)+g),int(_baseColDif[2]*(j+1)+b),int(_baseColDif[3]*(j+1)+y)]
-            #print(_colDif)
-            r2,g2,b2,y2 = _colDif[0],_colDif[1],_colDif[2],_colDif[3]
-            for i in range(16):
-                np[i] = (r2,g2,b2,y2)
-                np.write()
-  
-        time.sleep_ms(3)        
-        return r2,g2,b2,y2
+        # 消灯
+        for i in range(n):
+            np[i] = (0, 0, 0)
+        np.write()
+#         def add(a,b):
+#             return a+b
+#         
+#         _colList = np[5] # 5じゃなくても良い。今の光のいろを聞くために5人目に相談している
+#         print(_colList)
+#         r = _colList[0]
+#         g = _colList[1]
+#         b = _colList[2]
+#         y = 0
+#         _step = 2
+#         if rssi > -60:
+#             r1 = 255
+#             g1 = 0
+#             b1 = 0
+#             y1 = 0
+#         else:
+#             r1 = 0
+#             g1 = 0
+#             b1 = 255
+#             y1 = 0
+# 
+#         _baseColDif = [(r1+(-r))/_step,(g1+(-g))/_step,(b1+(-b))/_step,(y1+(-y))/_step]# 今の光の色と変化させたい色の差分
+#         #print(_baseColDif)
+#         for j in range(_step-1):
+#             _colDif = [int(_baseColDif[0])*(j+1)+r,int(_baseColDif[1]*(j+1)+g),int(_baseColDif[2]*(j+1)+b),int(_baseColDif[3]*(j+1)+y)]
+#             #print(_colDif)
+#             r2,g2,b2,y2 = _colDif[0],_colDif[1],_colDif[2],_colDif[3]
+#             for i in range(16):
+#                 np[i] = (r2,g2,b2,y2)
+#                 np.write()#最終的な色の出力
+#   
+#         time.sleep_ms(3)        
+#         return r2,g2,b2,y2
             
             
         
@@ -279,7 +314,7 @@ def demo():
     central = BLESimpleCentral(ble)
     
     while True:
-        print("/----Connected-----/")     
+        print("/----Connected-----/")
         not_found = False
         central.scan(callback=on_scan)
 
