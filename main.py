@@ -6,6 +6,7 @@ import struct
 import time
 import micropython
 import machine, neopixel
+import _thread
 from ble_advertising import decode_services, decode_name
 from ble_advertising import advertising_payload
 from micropython import const
@@ -71,6 +72,7 @@ _UART_SERVICE = (
 )
 ####################################################################
 RSSI = []
+finalRSSI = [-100]
 np = neopixel.NeoPixel(machine.Pin(15), 8)
 class BLESimpleCentral:
     def __init__(self, ble,name="001"):
@@ -230,51 +232,23 @@ class BLESimpleCentral:
     def on_write(self, callback):
         self._write_callback = callback
 #######################
-def demo():
+
+
+def thread1():
     global RSSI
-    finalRSSI = -100
+    global finalRSSI
+    global lock
+
     def on_scan(addr_type, addr, name,rssi):
                 if addr_type is not None:
                     print("Found peripheral:", addr_type, addr, name,rssi)
                 else:
                     nonlocal not_found
                     not_found = True
-                    print("No peripheral found.")
-                    
-    def lighting(rssi):
-        n = np.n
-        r = 0
-        g = 0
-        b = 0
-        # フェードイン/フェードアウト
-        for i in range(0, 4 * 256,  1): # 一番右の数字で点滅の周期を制御できる
-            for j in range(n):
-                if (i // 256) % 2 == 0:
-                    val = i & 0xff
-                    if rssi > -50:
-                        np[j] = (val, 0, 0)
-                    elif rssi > -65 and rssi < -50:
-                        np[j] = (0, val, 0)
-                    elif rssi > -100 and rssi < -65:
-                        np[j] = (0, 0, val)
-                else:
-                    val = 255 - (i & 0xff)
-                    if rssi > -50:
-                        np[j] = (val, 0, 0)
-                    elif rssi > -65 and rssi < -50:
-                        np[j] = (0, val, 0)
-                    elif rssi > -100 and rssi < -65:
-                        np[j] = (0, 0, val)
-            np.write()
-        # 消灯
-        for i in range(n):
-            np[i] = (0, 0, 0)
-        np.write()
-        
-        
+                    print("No peripheral found.")        
     def on_rx(v):
         print("RX", v)
-        
+
     ble = bluetooth.BLE()
     central = BLESimpleCentral(ble)
     while True:
@@ -287,11 +261,56 @@ def demo():
         print("/---Disconnected---/")
         print(RSSI)
         if len(RSSI) >3 :
-            finalRSSI = max(RSSI)
+            finalRSSI =[]
+            finalRSSI.append(max(RSSI))
             RSSI = []
-        lighting(finalRSSI)
+            print(finalRSSI)
+        #time.sleep_ms(500)
+
+def thread2():
+    global RSSI
+    global finalRSSI
+    global lock
+    def lighting(rssi):
+        print("run")
+        n = np.n
+        r = 0
+        g = 0
+        b = 0
+        # フェードイン/フェードアウト
+        for i in range(0, 4 * 256,  6): # 一番右の数字で点滅の周期を制御できる
+            #print(i)
+            for j in range(n):
+                if (i // 256) % 2 == 0:
+                    val = i & 0xff
+                    if rssi > -50:
+                        np[j] = (val-random.randint(30,100), 0, 0)
+                    elif rssi < -50:
+                        np[j] = (0, 0, val-random.randint(30,100))
+                else:
+                    val = 255 - (i & 0xff)
+                    if rssi > -50:
+                        np[j] = (val-random.randint(30,100), 0, 0)
+                    elif rssi < -50:
+                        np[j] = (0, 0, val-random.randint(30,100))
+            np.write()
+        # 消灯
+        for i in range(n):
+            np[i] = (0, 0, 0)
+        np.write()
+    try:    
+        while True:
+            lighting(finalRSSI[-1])
+            time.sleep_ms(100)
+            
+    except Exception:
+        print("ERROR")
+  
  ####################################
     #p.on_write(on_rx)
 ######################################
+lock = _thread.allocate_lock()
+
 if __name__ == "__main__":
-    demo()
+    _thread.start_new_thread(thread1, ())  # SendThreadの起動
+    _thread.start_new_thread(thread2, ())  # RecvThreadの起動
