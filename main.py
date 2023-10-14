@@ -7,6 +7,9 @@ import time
 import micropython
 import machine, neopixel
 import _thread
+from machine import Pin, I2C
+import mpu6050
+
 from ble_advertising import decode_services, decode_name
 from ble_advertising import advertising_payload
 from micropython import const
@@ -29,6 +32,12 @@ _IRQ_GATTC_READ_DONE = const(16)
 _IRQ_GATTC_WRITE_DONE = const(17)
 _IRQ_GATTC_NOTIFY = const(18)
 _IRQ_GATTC_INDICATE = const(19)
+
+
+######################################
+i2c = I2C(scl=Pin(22), sda=Pin(21))     #initializing the I2C method for ESP32
+#i2c = I2C(scl=Pin(5), sda=Pin(4))       #initializing the I2C method for ESP8266
+mpu= mpu6050.accel(i2c)
 ######################################
 _FLAG_READ = const(0x0002)
 _FLAG_WRITE_NO_RESPONSE = const(0x0004)
@@ -71,8 +80,7 @@ _UART_SERVICE = (
     (_UART_TX, _UART_RX),
 )
 ####################################################################
-RSSI = []
-finalRSSI = [-100]
+
 np = neopixel.NeoPixel(machine.Pin(15), 8)
 class BLESimpleCentral:
     def __init__(self, ble,name="001"):
@@ -232,6 +240,10 @@ class BLESimpleCentral:
     def on_write(self, callback):
         self._write_callback = callback
 #######################
+RSSI = []
+finalRSSI = [-100]
+Acc = []
+dif = [0]
 
 
 def thread1():
@@ -249,8 +261,7 @@ def thread1():
     def on_rx(v):
         print("RX", v)
 
-    ble = bluetooth.BLE()
-    central = BLESimpleCentral(ble)
+
     while True:
         print("/----Connected-----/")
         not_found = False
@@ -259,58 +270,88 @@ def thread1():
         with_response = False
         ble.gap_scan(None)
         print("/---Disconnected---/")
-        print(RSSI)
+        #print(RSSI)
         if len(RSSI) >3 :
             finalRSSI =[]
             finalRSSI.append(max(RSSI))
             RSSI = []
-            print(finalRSSI)
+        print("1",RSSI)
         #time.sleep_ms(500)
+    _thread.exit()
 
 def thread2():
     global RSSI
     global finalRSSI
     global lock
+    global dif
     def lighting(rssi):
         print("run")
         n = np.n
         r = 0
         g = 0
         b = 0
+        offset0 = 30
+        offset1 = 40
+        offset2 = 60
         # フェードイン/フェードアウト
-        for i in range(0, 4 * 256,  6): # 一番右の数字で点滅の周期を制御できる
-            #print(i)
+        if dif[-1] > 500:
+            interval = 20
+        else:
+            interval = 6
+        print(dif[-1],interval)
+        for i in range(0, 4 * 256,  interval): # 一番右の数字で点滅の周期を制御できる
+            #sss = random.randint(30,60)
             for j in range(n):
                 if (i // 256) % 2 == 0:
                     val = i & 0xff
                     if rssi > -50:
-                        np[j] = (val-random.randint(30,100), 0, 0)
+                        np[j] = (val, 0, 0)
                     elif rssi < -50:
-                        np[j] = (0, 0, val-random.randint(30,100))
+                        np[j] = (0, 0, val)
                 else:
                     val = 255 - (i & 0xff)
                     if rssi > -50:
-                        np[j] = (val-random.randint(30,100), 0, 0)
+                        np[j] = (val, 0, 0)
                     elif rssi < -50:
-                        np[j] = (0, 0, val-random.randint(30,100))
+                        np[j] = (0, 0, val)
             np.write()
         # 消灯
         for i in range(n):
             np[i] = (0, 0, 0)
         np.write()
-    try:    
-        while True:
-            lighting(finalRSSI[-1])
-            time.sleep_ms(100)
-            
-    except Exception:
-        print("ERROR")
+
+    while True:
+        print("unko",finalRSSI)
+        lighting(finalRSSI[-1])
+        time.sleep_ms(100)
+    _thread.exit()
   
+def thread3():
+    global dif
+    global Acc
+    while True:
+        dif = []
+        if len(Acc) > 3:
+            del Acc[0]
+        Acc.append(mpu.get_values())
+        if len(Acc) >2:
+            dif.append(abs(Acc[1]-Acc[0]))
+        else:
+            dif = [0]
+            
+        print(dif)
+        time.sleep(1)
+    _thread.exit()
+
  ####################################
     #p.on_write(on_rx)
 ######################################
 lock = _thread.allocate_lock()
 
 if __name__ == "__main__":
-    _thread.start_new_thread(thread1, ())  # SendThreadの起動
+    ble = bluetooth.BLE()
+    central = BLESimpleCentral(ble)
+
+    #_thread.start_new_thread(thread1, ())  # SendThreadの起動
     _thread.start_new_thread(thread2, ())  # RecvThreadの起動
+    _thread.start_new_thread(thread3, ())  # RecvThreadの起動
