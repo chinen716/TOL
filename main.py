@@ -5,19 +5,11 @@ import random
 import struct
 import time
 import micropython
-import machine
-import neopixel
+import machine, neopixel
 import _thread
 from machine import Pin, I2C
 import mpu6050
-import network
-import webrepl
-import utime
-
-
-
-    
-    
+import profile
 
 from ble_advertising import decode_services, decode_name
 from ble_advertising import advertising_payload
@@ -72,10 +64,10 @@ _ENV_SENSE_UUID = [
     bluetooth.UUID(0x012A),
     bluetooth.UUID(0x013A),
     bluetooth.UUID(0x014A),
-    #bluetooth.UUID(0x015A),
+    bluetooth.UUID(0x015A),
     ]
 ####################################################################
-_UART_UUID = bluetooth.UUID(0x015A)
+_UART_UUID = profile.my_UUID()
 _UART_TX = (
     bluetooth.UUID("6E400003-B5A3-F393-E0A9-E50E24DCCA9F"),
     _FLAG_READ | _FLAG_NOTIFY,
@@ -131,6 +123,7 @@ class BLESimpleCentral:
         
         if event == _IRQ_SCAN_RESULT:
             addr_type, addr, adv_type, rssi, adv_data = data
+            #print("Received adv_data:", adv_data) 
             if adv_type in (_ADV_IND, _ADV_DIRECT_IND):
                 type_list = decode_services(adv_data)
                 #rssi_list =[]
@@ -253,110 +246,127 @@ RSSI = []
 finalRSSI = [-100]
 Acc = []
 dif = [0]
+thread_exit_flag = False
+
+# ボタンのコールバック関数
+def button_callback(p):
+    global thread_exit_flag
+    thread_exit_flag = True
+    
+# デフォルトのボタンをGPIO0に接続（通常、BOOTボタンがこのピンに接続されている）
+button = Pin(0, Pin.IN, Pin.PULL_UP)
+button.irq(trigger=Pin.IRQ_FALLING, handler=button_callback)
 
 
-def thread1():   ###RSSI
+def thread1():
     global RSSI
     global finalRSSI
     global lock
+    global thread_exit_flag
+    while not thread_exit_flag:
+            
+        def on_scan(addr_type, addr, name,rssi):
+                    if addr_type is not None:
+                        print("Found peripheral:", addr_type, addr, name,rssi)
+                    else:
+                        nonlocal not_found
+                        not_found = True
+                        print("No peripheral found.")        
+        def on_rx(v):
+            print("RX", v)
 
-    def on_scan(addr_type, addr, name,rssi):
-                if addr_type is not None:
-                    print("Found peripheral:", addr_type, addr, name,rssi)
-                else:
-                    nonlocal not_found
-                    not_found = True
-                    print("No peripheral found.")        
-    def on_rx(v):
-        print("RX", v)
 
-
-    while True:
-        print("/----Connected-----/")
-        not_found = False
-        central.scan(callback=on_scan)
-        time.sleep_ms(1000)
-        with_response = False
-        ble.gap_scan(None)
-        print("/---Disconnected---/")
-        #print(RSSI)
-        if len(RSSI) >3 :
-            finalRSSI =[]
-            finalRSSI.append(max(RSSI))
-            RSSI = []
-        print("1",RSSI)
-        #time.sleep_ms(500)
+        while True:
+            print("/----Connected-----/")
+            not_found = False
+            central.scan(callback=on_scan)
+            time.sleep_ms(1000)
+            with_response = False
+            ble.gap_scan(None)
+            print("/---Disconnected---/")
+            #print(RSSI)
+            if len(RSSI) >3 :
+                finalRSSI =[]
+                finalRSSI.append(max(RSSI))
+                RSSI = []
+            print("1",RSSI)
+            #time.sleep_ms(500)
     _thread.exit()
 
-def thread2():   ### 発光の制御
+def thread2():
     global RSSI
     global finalRSSI
     global lock
     global dif
-    def lighting(rssi):
-        print("run")
-        n = np.n
-        r = 0
-        g = 0
-        b = 0
-        offset0 = 30
-        offset1 = 40
-        offset2 = 60
-        # フェードイン/フェードアウト
-        if dif[-1] > 500:
-            interval = 20
-        else:
-            interval = 6
-        print(dif[-1],interval)
-        for i in range(0, 4 * 256,  interval): # 一番右の数字で点滅の周期を制御できる
-            #sss = random.randint(30,60)
-            for j in range(n):
-                if (0 <= i <  5) or (507 <= i < 512) or (512 <= i < 517) or (1019 <= i <  1024):
-                    if rssi > -50:
-                            np[j] = (5, 0, 0)
-                    elif rssi < -50:
-                            np[j] = (0, 5, 0)
-                else:
-                    if (i // 256) % 2 == 0:
-                        val = i & 0xff
-                        if rssi > -50:
-                            np[j] = (val,  0,  val)
-                        elif rssi < -50:
-                            np[j] = (0, val, val)
-                    else:
-                        val = 255 - (i & 0xff)
-                        if rssi > -50:
-                            np[j] = (val, 0, val)
-                        elif rssi < -50:
-                            np[j] = (0, val, val)
-            #print(np[j])
-            np.write()
-        # 消灯
-        #for i in range(n):
-            #np[i] = (0, 0, 0)
-        np.write()
+    global thread_exit_flag
 
-    while True:
-        print("unko",finalRSSI)
-        lighting(finalRSSI[-1])
-        time.sleep_ms(100)
+    while not thread_exit_flag:
+        def lighting(rssi):
+            print("run")
+            n = np.n
+            r = 0
+            g = 0
+            b = 0
+            offset0 = 30
+            offset1 = 40
+            offset2 = 60
+            # フェードイン/フェードアウト
+            if dif[-1] > 500:
+                interval = 20
+            else:
+                interval = 6
+            print(dif[-1],interval)
+            for i in range(0, 4 * 256,  interval): # 一番右の数字で点滅の周期を制御できる
+                #sss = random.randint(30,60)
+                for j in range(n):
+                    if (0 <= i <  5) or (507 <= i < 512) or (512 <= i < 517) or (1019 <= i <  1024):
+                        if rssi > -50:
+                                np[j] = (5, 0, 0)
+                        elif rssi < -50:
+                                np[j] = (0, 0, 5)
+                    else:
+                        if (i // 256) % 2 == 0:
+                            val = i & 0xff
+                            if rssi > -50:
+                                np[j] = (val,  0,  0)
+                            elif rssi < -50:
+                                np[j] = (0, 0, val)
+                        else:
+                            val = 255 - (i & 0xff)
+                            if rssi > -50:
+                                np[j] = (val, 0, 0)
+                            elif rssi < -50:
+                                np[j] = (0, 0, val)
+                np.write()
+            # 消灯
+            for i in range(n):
+                np[i] = (0, 0, 0)
+            np.write()
+
+        while True:
+            print("unko",finalRSSI)
+            lighting(finalRSSI[-1])
+            time.sleep_ms(100)
     _thread.exit()
   
-def thread3():  ### 抱っこ   
+def thread3():
     global dif
     global Acc
-    while True:
-        dif = []
-        if len(Acc) > 3:
-            del Acc[0]
-        Acc.append(mpu.get_values())
-        if len(Acc) >2:
-            dif.append(abs(Acc[1]-Acc[0]))
-        else:
-            dif = [0]
-            
-        print(dif)
-        time.sleep(1)
+    global thread_exit_flag
+
+    while not thread_exit_flag:
+        while True:
+            dif = []
+            if len(Acc) > 3:
+                del Acc[0]
+            Acc.append(mpu.get_values())
+            if len(Acc) >2:
+                dif.append(abs(Acc[1]-Acc[0]))
+            else:
+                dif = [0]
+                
+            print(dif)
+            time.sleep(1)
     _thread.exit()
 
  ####################################
@@ -365,19 +375,10 @@ def thread3():  ### 抱っこ
 lock = _thread.allocate_lock()
 
 if __name__ == "__main__":
-    sta = network.WLAN(network.STA_IF)
-    sta.active(True)
-
-    sta.connect("BUFFALO-AA6898_G", "cra43aita37ni")
-    
-    webrepl.start()
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    ap.config(essid="ESP32_WebREPL11")
-
     ble = bluetooth.BLE()
     central = BLESimpleCentral(ble)
 
     _thread.start_new_thread(thread1, ())  # SendThreadの起動
     _thread.start_new_thread(thread2, ())  # RecvThreadの起動
     _thread.start_new_thread(thread3, ())  # RecvThreadの起動
+
