@@ -277,19 +277,17 @@ def thread1():
 
 
         while True:
-            print("/----Connected-----/")
+            #print("/----Connected-----/")
             not_found = False
             central.scan(callback=on_scan)
             time.sleep_ms(1000)
             with_response = False
             ble.gap_scan(None)
-            print("/---Disconnected---/")
-            #print(RSSI)
+            #print("/---Disconnected---/")
             if len(RSSI) >3 :
-                finalRSSI =[]
+                finalRSSI =[finalRSSI[-1]]
                 finalRSSI.append(max(RSSI))
                 RSSI = []
-            print("1",RSSI)
             #time.sleep_ms(500)
     _thread.exit()
 
@@ -301,41 +299,30 @@ def thread2():
     global thread_exit_flag
 
     while not thread_exit_flag:
-        def lighting(rssi):
-            print("run")
+        
+        def lighting(rssi,fluct):
+
             n = np.n
-            r = 0
-            g = 0
-            b = 0
-            offset0 = 30
-            offset1 = 40
-            offset2 = 60
-            # フェードイン/フェードアウト
-            if dif[-1] > 500:
-                interval = 20
-            else:
-                interval = 6
-            print(dif[-1],interval)
-            for i in range(0, 4 * 256,  interval): # 一番右の数字で点滅の周期を制御できる
+            for i in range(0, 4 * 256,  15): # 一番右の数字で点滅の周期を制御できる
                 #sss = random.randint(30,60)
                 for j in range(n):
                     if (0 <= i <  5) or (507 <= i < 512) or (512 <= i < 517) or (1019 <= i <  1024):
-                        if rssi > -50:
-                                np[j] = (5, 0, 0)
-                        elif rssi < -50:
-                                np[j] = (0, 0, 5)
+                        if (rssi > -70 or fluct >1000):
+                                np[j] = (1, 0, 0)
+                        elif (rssi < -70 or fluct <1000):
+                                np[j] = (0, 0, 1)
                     else:
                         if (i // 256) % 2 == 0:
                             val = i & 0xff
-                            if rssi > -50:
+                            if (rssi >= -70 or fluct >= 1000):
                                 np[j] = (val,  0,  0)
-                            elif rssi < -50:
+                            elif (rssi < -70 or fluct < 1000):
                                 np[j] = (0, 0, val)
                         else:
                             val = 255 - (i & 0xff)
-                            if rssi > -50:
+                            if (rssi >= -70 or fluct >= 2000):
                                 np[j] = (val, 0, 0)
-                            elif rssi < -50:
+                            elif (rssi < -70 or fluct < 2000):
                                 np[j] = (0, 0, val)
                 np.write()
             # 消灯
@@ -344,8 +331,7 @@ def thread2():
             np.write()
 
         while True:
-            print("unko",finalRSSI)
-            lighting(finalRSSI[-1])
+            lighting(finalRSSI[-1],dif[-1])
             time.sleep_ms(100)
     _thread.exit()
   
@@ -364,8 +350,6 @@ def thread3():
                 dif.append(abs(Acc[1]-Acc[0]))
             else:
                 dif = [0]
-                
-            print(dif)
             time.sleep(1)
     _thread.exit()
 
@@ -381,4 +365,3 @@ if __name__ == "__main__":
     _thread.start_new_thread(thread1, ())  # SendThreadの起動
     _thread.start_new_thread(thread2, ())  # RecvThreadの起動
     _thread.start_new_thread(thread3, ())  # RecvThreadの起動
-
